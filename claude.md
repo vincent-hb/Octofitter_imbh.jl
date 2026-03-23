@@ -1,22 +1,17 @@
-# Ocen_IMBH Project
+# Octofitter_imbh.jl
 
-## Project Purpose
+## Purpose
 
-This project fits orbits of stars around an intermediate-mass black hole (IMBH) candidate in the globular cluster ω Centauri (ω Cen). We use a customized development fork of [Octofitter](https://github.com/sefffal/Octofitter.jl) (`Octofitter_imbh.jl`) to perform Bayesian inference on stellar kinematics.
+Development fork of [Octofitter](https://github.com/sefffal/Octofitter.jl) (v8.1.2) for fitting orbits of stars around an IMBH candidate in ω Centauri. Changes relative to upstream:
 
-**Key development goals in `Octofitter_imbh.jl`:**
-- Enable the RA and DEC position of the central mass to be free parameters in the model
-- Implement a likelihood for fitting directly on 2D proper motion velocities and accelerations (RA and DEC components separately, not just the scalar anomaly magnitude)
+- RA and DEC position of the central mass are free parameters in the model
+- Likelihood for fitting directly on 2D proper motion velocities and accelerations (RA and DEC components separately, not just the scalar anomaly magnitude)
 
-**Analysis and compute (`Ocen_IMBH_analysis/`):**
-- Scripts to launch Slurm jobs for orbit fitting on Digital Alliance of Canada (DAC) HPC clusters
-- Scripts for post-fit analysis, chain diagnostics, and figure production
+The companion analysis repo (`Ocen_IMBH_analysis`) holds Slurm job scripts for Digital Alliance of Canada (DAC) HPC clusters and post-fit analysis/figure scripts.
 
 ---
 
 ## Codebase Summary
-
-### `Octofitter_imbh.jl/` — Development fork of Octofitter (v8.1.2, Julia)
 
 A Bayesian orbital fitting framework. Users define a `System` (with `Planet` objects and `AbstractObs` likelihood observations), compile a `LogDensityModel`, then sample via HMC/NUTS using AdvancedHMC.jl. Gradients are computed automatically via ForwardDiff.jl.
 
@@ -41,16 +36,9 @@ A Bayesian orbital fitting framework. Users define a `System` (with `Planet` obj
 - One file per plot type (`astromplot.jl`, `hgcaplot.jl`, `pmaplot.jl`, `rvtimeplot.jl`, `gaiastarplot.jl`, `dotplot.jl`, `octoplot.jl`, etc.)
 - Utility functions in `util.jl` (`_date_ticks`, `concat_with_nan`, etc.)
 
-### `Ocen_IMBH_analysis/` — Analysis scripts
-
-Currently minimal. Will contain:
-- Slurm job submission scripts for DAC clusters
-- Julia/Python scripts for chain diagnostics and posterior analysis
-- Figure production scripts
-
 ---
 
-## Octofitter Coding Conventions
+## Coding Conventions
 
 ### Naming
 - Functions: `snake_case` (e.g., `octoplot`, `construct_elements`)
