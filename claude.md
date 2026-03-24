@@ -11,6 +11,30 @@ The companion analysis repo (`Ocen_IMBH_analysis`) holds Slurm job scripts for D
 
 ---
 
+## Key Modification: Central Mass Position as Free Parameters
+
+**File to modify:** `src/likelihoods/relative-astrometry.jl`
+
+The existing code supports optional `platescale` and `northangle` observation variables that rotate/scale astrometry data before computing residuals. The same `hasproperty` pattern is used to add `offsetx` and `offsety` parameters that shift the astrometry data (i.e., move the assumed central mass position in RA/DEC).
+
+**Add after the existing `platescale`/`northangle` reads:**
+
+```julia
+offsetx = hasproperty(θ_obs, :offsetx) ? getproperty(θ_obs, :offsetx) : zero(T)
+offsety = hasproperty(θ_obs, :offsety) ? getproperty(θ_obs, :offsety) : zero(T)
+```
+
+**Update the residual calculation to:**
+
+```julia
+resid1 = ra_dat - offsetx - ra_model
+resid2 = dec_dat - offsety - dec_model
+```
+
+Users expose `offsetx`/`offsety` as sampled parameters in the `@variables` block of the relevant observation, and the likelihood picks them up automatically via `hasproperty`.
+
+---
+
 ## Codebase Summary
 
 A Bayesian orbital fitting framework. Users define a `System` (with `Planet` objects and `AbstractObs` likelihood observations), compile a `LogDensityModel`, then sample via HMC/NUTS using AdvancedHMC.jl. Gradients are computed automatically via ForwardDiff.jl.
