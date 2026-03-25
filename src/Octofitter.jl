@@ -57,6 +57,8 @@ equal_length_cols(tab) = allequal(length(getproperty(tab, col)) for col in Table
 
 include("likelihoods/system.jl")
 include("likelihoods/relative-astrometry.jl")
+include("likelihoods/proper-motion.jl")
+include("likelihoods/acceleration.jl")
 include("likelihoods/photometry.jl")
 include("likelihoods/hgca.jl")
 include("likelihoods/gaia-utils.jl")
