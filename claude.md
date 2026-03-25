@@ -1,0 +1,165 @@
+# Octofitter_imbh.jl
+
+## Purpose
+
+Development fork of [Octofitter](https://github.com/sefffal/Octofitter.jl) (v8.1.2) for fitting orbits of stars around an IMBH candidate in ω Centauri. Changes relative to upstream:
+
+- Free central mass position via system-level `offsetx`/`offsety` parameters
+- `PlanetPMObs` — direct 2D proper motion likelihood
+- `PlanetAccelObs` — direct 2D acceleration likelihood
+
+The companion analysis repo (`Ocen_IMBH_analysis`) holds Slurm job scripts for Digital Alliance of Canada (DAC) HPC clusters and post-fit analysis/figure scripts.
+
+---
+
+## Custom Modifications (implemented)
+
+### 1. Free Central Mass Position (`offsetx`/`offsety`)
+
+**File:** `src/likelihoods/relative-astrometry.jl`
+
+The IMBH position may differ from the assumed cluster center. System-level `offsetx` and `offsety` parameters shift the astrometry residuals. These are read from `θ_system` (not `θ_obs`), since the IMBH position is shared across all stars.
+
+In `ln_like`:
+```julia
+offsetx = hasproperty(θ_system, :offsetx) ? getproperty(θ_system, :offsetx) : zero(T)
+offsety = hasproperty(θ_system, :offsety) ? getproperty(θ_system, :offsety) : zero(T)
+# ...
+resid1 = ra_dat - offsetx - ra_model
+resid2 = dec_dat - offsety - dec_model
+```
+
+Users define `offsetx`/`offsety` in the `System`-level `@variables` block. Defaults to zero if not defined (backwards compatible).
+
+**Note:** The original `Octofitter_modifications.md` suggested `θ_obs`-level offsets. We chose `θ_system`-level because the IMBH position is physically the same for all stars — it must not vary per-observation.
+
+### 2. `PlanetPMObs` — Direct Proper Motion Likelihood
+
+**File:** `src/likelihoods/proper-motion.jl`
+
+Fits directly on 2D proper motion (`pmra`, `pmdec`) using `pmra(sol)` and `pmdec(sol)` from PlanetOrbits.jl. Columns: `(:epoch, :pmra, :pmdec, :σ_pmra, :σ_pmdec)`, optional `:cor`. Supports optional system-level `pmra`/`pmdec` bulk motion (not needed for cluster-relative data). Alias: `PlanetPMLikelihood`.
+
+### 3. `PlanetAccelObs` — Direct Acceleration Likelihood
+
+**File:** `src/likelihoods/acceleration.jl`
+
+Fits directly on 2D acceleration (`accra`, `accdec`) using `accra(sol)` and `accdec(sol)` from PlanetOrbits.jl. Columns: `(:epoch, :accra, :accdec, :σ_accra, :σ_accdec)`, optional `:cor`. No system-level acceleration (IMBH acceleration is negligible). Alias: `PlanetAccelLikelihood`.
+
+### Design Decisions
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| `offsetx`/`offsety` scope | System-level (`θ_system`) | Single IMBH position shared by all stars |
+| System PM (`pmra`/`pmdec`) | Optional via `hasproperty` | Data is cluster-relative for ω Cen; code supports it for generality |
+| System acceleration | Not included | No physical motivation; IMBH mass >> star masses |
+
+---
+
+## Codebase Summary
+
+A Bayesian orbital fitting framework. Users define a `System` (with `Planet` objects and `AbstractObs` likelihood observations), compile a `LogDensityModel`, then sample via HMC/NUTS using AdvancedHMC.jl. Gradients are computed automatically via ForwardDiff.jl.
+
+**Core source (`src/`):**
+- `Octofitter.jl` — module entry point and re-exports
+- `variables.jl` — `System`, `Planet`, `@variables` macro, priors, derived parameters
+- `logdensitymodel.jl` — `LogDensityModel` struct (implements `LogDensityProblems` interface)
+- `sampling.jl` — HMC/NUTS sampling, initialization, chain management
+- `initialization.jl` — heuristic parameter initialization
+- `parameterizations.jl` — parameter transformations (e.g., `UniformCircular`)
+- `distributions.jl` — custom distributions (`Sine`, `UniformImproper`, `KDEDist`)
+- `analysis.jl` — stubs that dispatch to Makie extension functions
+- `likelihoods/` — one file per data type (`relative-astrometry.jl`, `proper-motion.jl`, `acceleration.jl`, `hgca.jl`, `gaia-dr4.jl`, `hipparcos.jl`, `photometry.jl`, etc.)
+
+**Extension packages (optional, separate `Project.toml`):**
+- `OctofitterRadialVelocity/` — absolute and relative RV, Celerite GP kernel
+- `OctofitterInterferometry/` — GRAVITY interferometric data
+- `OctofitterImages/` — direct imaging contrast maps
+- `OctofitterTransits/` — transit photometry
+
+**Makie extension (`ext/OctofitterMakieExt/`):**
+- One file per plot type (`astromplot.jl`, `hgcaplot.jl`, `pmaplot.jl`, `rvtimeplot.jl`, `gaiastarplot.jl`, `dotplot.jl`, `octoplot.jl`, etc.)
+- Utility functions in `util.jl` (`_date_ticks`, `concat_with_nan`, etc.)
+
+---
+
+## Coding Conventions
+
+### Naming
+- Functions: `snake_case` (e.g., `octoplot`, `construct_elements`)
+- Mutating functions: `!` suffix (e.g., `octoplot!`, `astromplot!`)
+- Private/internal: `_` prefix (e.g., `_date_ticks`, `_system_number_type`)
+- Types/structs: `PascalCase` (e.g., `LogDensityModel`, `AbstractObs`, `SystemObservationContext`)
+- Fields and local variables: `snake_case`
+- Mathematical variables: Greek letters and Unicode encouraged (e.g., `θ`, `ℓ`, `∇ℓπ`, `α`, `ν`)
+
+### Types and Structs
+- Use abstract types for extensibility (e.g., `AbstractObs`, `AbstractOrbit`)
+- Parametric structs with `<:` constraints for type stability
+- Use `NamedTuple` for parameter bundles (e.g., `θ_system`, `θ_planet`, `θ_obs`)
+- Prefer immutable structs for data; mutable only for stateful objects (e.g., `LogDensityModel`)
+
+### Model Definition Patterns
+- Use the `@variables` DSL macro with `begin...end` blocks for defining priors and derived quantities
+- Observations/likelihoods are subtypes of `AbstractObs`; new likelihood types go in `src/likelihoods/`
+- The `LogDensityModel(system)` call compiles the model (generates log-likelihood and gradient code)
+
+### Automatic Differentiation
+- All likelihood and model code must be AD-compatible (ForwardDiff by default)
+- Avoid non-differentiable branches in likelihood evaluation paths
+- Type stability is critical: use `let` blocks in closures to capture variables, avoid untyped globals
+- Do not use `Float64` literals where the element type should propagate from inputs
+
+### Docstrings
+- Triple-quoted `"""..."""` above function/type definitions
+- First line: concise one-sentence summary
+- Follow with parameter descriptions and usage examples
+- Use LaTeX/Unicode for mathematical notation
+
+---
+
+## Plot Formatting Conventions (Makie / CairoMakie)
+
+### Figure Sizes and Saving
+- Main figures: `size=(700, 600)`
+- Compact panels: `size=(500, 300)` to `(500, 400)`
+- Always save with `px_per_unit=3` for publication quality
+- Accept a `figure=(;)` keyword argument to allow caller overrides
+
+### Colors
+- Per-object colormap: `Makie.cgrad([Makie.wong_colors()[i], "#FAFAFA"])`
+- For multiple objects: cycle through `Makie.wong_colors()` by index
+- Specific-use colormaps: `:plasma` for RV time, `:turbo` for eccentricity scatter, `:Egypt`/`:Lakota` for categorical instrument/epoch separation
+
+### Axes
+- No grid lines: `xgridvisible=false, ygridvisible=false`
+- Astrometry plots: `autolimitaspect=1` (square), `xreversed=true` (RA increases right-to-left)
+- Zero-crossing reference: `vlines!(ax, 0, color=:grey, linestyle=:dash)`
+
+### Axis Labels
+- Rich text for sub/superscripts: `Makie.rich("μ", Makie.subscript("α*"), " [mas/yr]")`
+- Mathematical notation: `Makie.latexstring(...)` where needed
+- Unicode deltas in coordinate labels: Δα*, Δδ
+
+### Markers and Lines
+- Data points: `markersize=8`
+- Posterior sample scatter: `markersize=2`, adaptive alpha `alpha=min.(1, 100/length(ii))`
+- Central mass / star marker: `marker='★', markersize=20, color=:white, strokecolor=:black, strokewidth=1.5`
+- Dense scatter: `rasterize=4` to reduce output file size
+
+### Function Pattern
+Every plot type exposes two methods:
+```julia
+# Standalone: creates Figure, saves to file, returns Figure
+function Octofitter.myplot(model, results, fname="$(model.system.name)-myplot.png"; figure=(;), kwargs...)
+    fig = Figure(; size=(...), figure...)
+    Octofitter.myplot!(fig.layout, model, results; kwargs...)
+    Makie.save(fname, fig, px_per_unit=3)
+    return fig
+end
+
+# In-place: draws into an existing GridLayout
+function Octofitter.myplot!(layout, model, results; kwargs...)
+    ax = Axis(layout[1,1]; ...)
+    # ...
+end
+```
