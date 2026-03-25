@@ -4,34 +4,54 @@
 
 Development fork of [Octofitter](https://github.com/sefffal/Octofitter.jl) (v8.1.2) for fitting orbits of stars around an IMBH candidate in ω Centauri. Changes relative to upstream:
 
-- RA and DEC position of the central mass are free parameters in the model
-- Likelihood for fitting directly on 2D proper motion velocities and accelerations (RA and DEC components separately, not just the scalar anomaly magnitude)
+- Free central mass position via system-level `offsetx`/`offsety` parameters
+- `PlanetPMObs` — direct 2D proper motion likelihood
+- `PlanetAccelObs` — direct 2D acceleration likelihood
 
 The companion analysis repo (`Ocen_IMBH_analysis`) holds Slurm job scripts for Digital Alliance of Canada (DAC) HPC clusters and post-fit analysis/figure scripts.
 
 ---
 
-## Key Modification: Central Mass Position as Free Parameters
+## Custom Modifications (implemented)
 
-**File to modify:** `src/likelihoods/relative-astrometry.jl`
+### 1. Free Central Mass Position (`offsetx`/`offsety`)
 
-The existing code supports optional `platescale` and `northangle` observation variables that rotate/scale astrometry data before computing residuals. The same `hasproperty` pattern is used to add `offsetx` and `offsety` parameters that shift the astrometry data (i.e., move the assumed central mass position in RA/DEC).
+**File:** `src/likelihoods/relative-astrometry.jl`
 
-**Add after the existing `platescale`/`northangle` reads:**
+The IMBH position may differ from the assumed cluster center. System-level `offsetx` and `offsety` parameters shift the astrometry residuals. These are read from `θ_system` (not `θ_obs`), since the IMBH position is shared across all stars.
 
+In `ln_like`:
 ```julia
-offsetx = hasproperty(θ_obs, :offsetx) ? getproperty(θ_obs, :offsetx) : zero(T)
-offsety = hasproperty(θ_obs, :offsety) ? getproperty(θ_obs, :offsety) : zero(T)
-```
-
-**Update the residual calculation to:**
-
-```julia
+offsetx = hasproperty(θ_system, :offsetx) ? getproperty(θ_system, :offsetx) : zero(T)
+offsety = hasproperty(θ_system, :offsety) ? getproperty(θ_system, :offsety) : zero(T)
+# ...
 resid1 = ra_dat - offsetx - ra_model
 resid2 = dec_dat - offsety - dec_model
 ```
 
-Users expose `offsetx`/`offsety` as sampled parameters in the `@variables` block of the relevant observation, and the likelihood picks them up automatically via `hasproperty`.
+Users define `offsetx`/`offsety` in the `System`-level `@variables` block. Defaults to zero if not defined (backwards compatible).
+
+**Note:** The original `Octofitter_modifications.md` suggested `θ_obs`-level offsets. We chose `θ_system`-level because the IMBH position is physically the same for all stars — it must not vary per-observation.
+
+### 2. `PlanetPMObs` — Direct Proper Motion Likelihood
+
+**File:** `src/likelihoods/proper-motion.jl`
+
+Fits directly on 2D proper motion (`pmra`, `pmdec`) using `pmra(sol)` and `pmdec(sol)` from PlanetOrbits.jl. Columns: `(:epoch, :pmra, :pmdec, :σ_pmra, :σ_pmdec)`, optional `:cor`. Supports optional system-level `pmra`/`pmdec` bulk motion (not needed for cluster-relative data). Alias: `PlanetPMLikelihood`.
+
+### 3. `PlanetAccelObs` — Direct Acceleration Likelihood
+
+**File:** `src/likelihoods/acceleration.jl`
+
+Fits directly on 2D acceleration (`accra`, `accdec`) using `accra(sol)` and `accdec(sol)` from PlanetOrbits.jl. Columns: `(:epoch, :accra, :accdec, :σ_accra, :σ_accdec)`, optional `:cor`. No system-level acceleration (IMBH acceleration is negligible). Alias: `PlanetAccelLikelihood`.
+
+### Design Decisions
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| `offsetx`/`offsety` scope | System-level (`θ_system`) | Single IMBH position shared by all stars |
+| System PM (`pmra`/`pmdec`) | Optional via `hasproperty` | Data is cluster-relative for ω Cen; code supports it for generality |
+| System acceleration | Not included | No physical motivation; IMBH mass >> star masses |
 
 ---
 
@@ -48,7 +68,7 @@ A Bayesian orbital fitting framework. Users define a `System` (with `Planet` obj
 - `parameterizations.jl` — parameter transformations (e.g., `UniformCircular`)
 - `distributions.jl` — custom distributions (`Sine`, `UniformImproper`, `KDEDist`)
 - `analysis.jl` — stubs that dispatch to Makie extension functions
-- `likelihoods/` — one file per data type (`relative-astrometry.jl`, `hgca.jl`, `gaia-dr4.jl`, `hipparcos.jl`, `photometry.jl`, etc.)
+- `likelihoods/` — one file per data type (`relative-astrometry.jl`, `proper-motion.jl`, `acceleration.jl`, `hgca.jl`, `gaia-dr4.jl`, `hipparcos.jl`, `photometry.jl`, etc.)
 
 **Extension packages (optional, separate `Project.toml`):**
 - `OctofitterRadialVelocity/` — absolute and relative RV, Celerite GP kernel
