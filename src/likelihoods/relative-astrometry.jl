@@ -170,6 +170,8 @@ function ln_like(astrom::PlanetRelAstromObs, ctx::PlanetObservationContext)
     jitter = hasproperty(θ_obs, :jitter) ? getproperty(θ_obs, :jitter) : zero(T)
     platescale = hasproperty(θ_obs, :platescale) ? getproperty(θ_obs, :platescale) : one(T)
     northangle = hasproperty(θ_obs, :northangle) ? getproperty(θ_obs, :northangle) : zero(T)
+    offsetx = hasproperty(θ_system, :offsetx) ? getproperty(θ_system, :offsetx) : zero(T)
+    offsety = hasproperty(θ_system, :offsety) ? getproperty(θ_system, :offsety) : zero(T)
 
     L = length(astrom.table.epoch)
     ll = zero(T)
@@ -204,8 +206,8 @@ function ln_like(astrom::PlanetRelAstromObs, ctx::PlanetObservationContext)
                 sep_dat = hypot(astrom.table.dec[i_epoch], astrom.table.ra[i_epoch]) * platescale
                 ra_dat = sep_dat * cos(pa_dat)
                 dec_dat = sep_dat * sin(pa_dat)
-                resid1 = ra_dat - ra_model
-                resid2 = dec_dat - dec_model
+                resid1 = ra_dat - offsetx - ra_model
+                resid2 = dec_dat - offsety - dec_model
             end
 
             if jitter == 0.
@@ -257,10 +259,12 @@ function generate_from_params(like::PlanetRelAstromObs, ctx::PlanetObservationCo
     ra_model = sim.ra_model
     dec_model = sim.dec_model
 
-    # Apply platescale and northangle corrections (which ln_like also handles)
+    # Apply platescale, northangle, and offset corrections (which ln_like also handles)
     platescale = hasproperty(θ_obs, :platescale) ? θ_obs.platescale : 1.0
     northangle = hasproperty(θ_obs, :northangle) ? θ_obs.northangle : 0.0
     jitter = hasproperty(θ_obs, :jitter) ? getproperty(θ_obs, :jitter) : 0.0
+    offsetx = hasproperty(θ_system, :offsetx) ? θ_system.offsetx : 0.0
+    offsety = hasproperty(θ_system, :offsety) ? θ_system.offsety : 0.0
 
     if hasproperty(like.table, :pa) && hasproperty(like.table, :sep)
         σ_sep = like.table.σ_sep 
@@ -292,8 +296,8 @@ function generate_from_params(like::PlanetRelAstromObs, ctx::PlanetObservationCo
         pa_corrected = pa_model .- northangle
         sep_corrected = sep_model ./ platescale
         
-        ra = sep_corrected .* sin.(pa_corrected)
-        dec = sep_corrected .* cos.(pa_corrected)
+        ra = sep_corrected .* sin.(pa_corrected) .+ offsetx
+        dec = sep_corrected .* cos.(pa_corrected) .+ offsety
         
         if hasproperty(like.table, :cov)
             astrometry_table = Table(;epoch, ra, dec, σ_ra, σ_dec, like.table.cov)
