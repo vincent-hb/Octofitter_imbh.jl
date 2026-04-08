@@ -70,6 +70,7 @@ include("likelihoods/gaia-dr4.jl")
 include("likelihoods/prior-observable.jl")
 include("likelihoods/prior-planet-order.jl")
 include("likelihoods/prior-non-crossing.jl")
+include("likelihoods/z-prior.jl")
 
 
 include("logdensitymodel.jl")

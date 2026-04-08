@@ -7,6 +7,7 @@ Development fork of [Octofitter](https://github.com/sefffal/Octofitter.jl) (v8.1
 - Free central mass position via system-level `offsetx`/`offsety` parameters
 - `PlanetPMObs` — direct 2D proper motion likelihood
 - `PlanetAccelObs` — direct 2D acceleration likelihood
+- `PlanetZPriorObs` — prior on line-of-sight (z) separation from central mass
 
 The companion analysis repo (`Ocen_IMBH_analysis`) holds Slurm job scripts for Digital Alliance of Canada (DAC) HPC clusters and post-fit analysis/figure scripts.
 
@@ -45,6 +46,16 @@ Fits directly on 2D proper motion (`pmra`, `pmdec`) using `pmra(sol)` and `pmdec
 
 Fits directly on 2D acceleration (`accra`, `accdec`) using `accra(sol)` and `accdec(sol)` from PlanetOrbits.jl. Columns: `(:epoch, :accra, :accdec, :σ_accra, :σ_accdec)`, optional `:cor`. No system-level acceleration (IMBH acceleration is negligible). Alias: `PlanetAccelLikelihood`.
 
+### 4. `PlanetZPriorObs` — Line-of-Sight Position Prior
+
+**File:** `src/likelihoods/z-prior.jl`
+
+Prior on the companion's LOS offset from the central mass, using `posz(sol)` from PlanetOrbits.jl. The model prediction is in AU. Accepts any univariate `Distribution` (typically `Normal(0, σ_z)` where σ_z is the cluster scale in AU). This constrains the otherwise unconstrained LOS distance, preventing `r → ∞` and `M → ∞`.
+
+```julia
+z_prior = PlanetZPriorObs(epoch_mjd, Normal(0.0, 845_000.0); name="A_zprior")
+```
+
 ### Design Decisions
 
 | Decision | Choice | Rationale |
@@ -52,6 +63,7 @@ Fits directly on 2D acceleration (`accra`, `accdec`) using `accra(sol)` and `acc
 | `offsetx`/`offsety` scope | System-level (`θ_system`) | Single IMBH position shared by all stars |
 | System PM (`pmra`/`pmdec`) | Optional via `hasproperty` | Data is cluster-relative for ω Cen; code supports it for generality |
 | System acceleration | Not included | No physical motivation; IMBH mass >> star masses |
+| z-prior scope | Per-planet (companion-level) | Each star has its own orbital z at the epoch |
 
 ---
 
