@@ -71,6 +71,7 @@ include("likelihoods/prior-observable.jl")
 include("likelihoods/prior-planet-order.jl")
 include("likelihoods/prior-non-crossing.jl")
 include("likelihoods/z-prior.jl")
+include("likelihoods/escape-velocity.jl")
 
 
 include("logdensitymodel.jl")
