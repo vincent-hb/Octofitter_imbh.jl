@@ -80,7 +80,6 @@ end
 # PlanetEscVelObs likelihood function
 function ln_like(obs::PlanetEscVelObs, ctx::PlanetObservationContext)
     (; θ_system, orbit_solutions, i_planet, orbit_solutions_i_epoch_start) = ctx
-    T = Octofitter._system_number_type(θ_system)
 
     sol = orbit_solutions[i_planet][1 + orbit_solutions_i_epoch_start]
 
@@ -95,21 +94,22 @@ function ln_like(obs::PlanetEscVelObs, ctx::PlanetObservationContext)
     # Escape velocity from IMBH alone [km/s].
     # Gaussian gravitational constant: GM = 4π² M  [AU³ yr⁻²] for M in solar masses.
     # v_esc = √(2GM/r) [AU/yr];  1 AU/yr = 4.74047 km/s.
+    # Constants are left as literals; arithmetic with M (a Dual during AD) promotes them.
     M = θ_system.M
-    v_esc_imbh_kms = oftype(T, 4.74047) * sqrt(oftype(T, 8) * oftype(T, π)^2 * M / r_au)
+    v_esc_imbh_kms = 4.74047 * sqrt(8 * π^2 * M / r_au)
 
     # Total escape velocity (IMBH + cluster contributions added in quadrature)
-    v_esc_tot = sqrt(v_esc_imbh_kms^2 + oftype(T, obs.v_esc_cluster_kms)^2)
+    v_esc_tot = sqrt(v_esc_imbh_kms^2 + obs.v_esc_cluster_kms^2)
 
-    v2D = oftype(T, obs.table.v2D[1])
-    σ_v = oftype(T, obs.table.σ_v[1])
+    v2D = obs.table.v2D[1]
+    σ_v = obs.table.σ_v[1]
 
     # Piecewise: no penalty when bound, Gaussian penalty when v₂D exceeds v_esc
     excess = v2D - v_esc_tot
-    if excess <= zero(T)
-        return zero(T)
+    if excess <= zero(excess)
+        return zero(excess)
     else
-        return oftype(T, -0.5) * (excess / σ_v)^2
+        return -0.5 * (excess / σ_v)^2
     end
 end
 
