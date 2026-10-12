@@ -13,3 +13,8 @@ _gaia_dr3
 _geocentre_pos
 GHOST*
 .CondaPkg/
+
+# Local assistant instructions, not part of the package
+claude.md
+CLAUDE.md
+.claude/
