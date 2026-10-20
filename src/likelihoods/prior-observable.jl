@@ -129,9 +129,13 @@ function ln_like(
     end
 
     sqrt_eccen = sqrt(1-eccentricity(orbit)^2)
-    jac *= cbrt(P) / sqrt_eccen 
+    jac *= cbrt(P) / sqrt_eccen
 
-    ln_prior += 2log(jac)
+    # O'Neil et al. 2019 eq. 36a: the prior is |J| to the FIRST power, so its
+    # log is log(jac).  This was 2log(jac) (|J|^2) until 2026-10: the term was
+    # ported from Efit5, which works in chi^2 units (-2 ln prior) and so writes
+    # -2*log(jac); the sign was corrected in f7a7f93 but not the factor.
+    ln_prior += log(jac)
 
     return ln_like_wrapped + ln_prior
 end
@@ -190,9 +194,11 @@ function ln_like(
         end
 
         sqrt_eccen = sqrt(1-eccentricity(orbit)^2)
-        jac *= cbrt(P) / sqrt_eccen 
+        jac *= cbrt(P) / sqrt_eccen
 
-        ln_prior += 2log(jac)
+        # |J| to the first power (O'Neil et al. 2019 eq. 36a); see the
+        # planet-level method above for why this was 2log(jac) before 2026-10.
+        ln_prior += log(jac)
     end
 
     return ln_like_wrapped + ln_prior

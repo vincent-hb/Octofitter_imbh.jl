@@ -94,3 +94,48 @@ end
     subset = Octofitter.likeobj_from_epoch_subset(obs_prior, 1:1)
     @test subset isa ObsPriorAstromONeil2019
 end
+
+@testset "Observable-based prior is |J| to the first power" begin
+    # O'Neil et al. 2019 eq. 36a.  The same model with and without the wrapper,
+    # evaluated at the same parameters, must differ by exactly log|J| (this was
+    # 2log|J| before 2026-10).  |J| is computed independently from eq. 33.
+    epoch = 55927.0
+    astrom = PlanetRelAstromObs(
+        Table(epoch=[epoch], ra=[-260.0], dec=[-51.0], σ_ra=[0.5], σ_dec=[0.5], cor=[0.0]);
+        name="pos")
+    function build(obs)
+        b = Planet(name="A", basis=Visual{KepOrbit}, observations=[obs],
+            variables=@variables begin
+                M = system.M
+                P ~ Uniform(10, 2_000_000)
+                a = cbrt(M * P^2)
+                e ~ Uniform(0.0, 0.99)
+                i ~ Sine()
+                ω ~ UniformCircular()
+                Ω ~ UniformCircular()
+                θ ~ UniformCircular()
+                tp = θ_at_epoch_to_tperi(θ, $epoch; a, e, i, ω, Ω, M)
+            end)
+        sys = System(name="oneil_exponent", companions=[b], observations=[],
+            variables=@variables begin
+                plx ~ truncated(Normal(0.1842, 0.0017), lower=0)
+                M ~ Uniform(100, 100000)
+            end)
+        Octofitter.LogDensityModel(sys; verbosity=0)
+    end
+    m_plain = build(astrom)
+    m_prior = build(ObsPriorAstromONeil2019(astrom))
+    rng = Octofitter.Random.Xoshiro(3)   # Random is loaded by Octofitter, not by runtests.jl
+    for _ in 1:4
+        θ  = m_plain.sample_priors(rng)
+        θt = m_plain.link(θ)
+        term = m_prior.ℓπcallback(θt) - m_plain.ℓπcallback(θt)
+        nt = m_plain.arr2nt(θ)
+        pl = nt.planets.A
+        orb = Visual{KepOrbit}(; a=pl.a, e=pl.e, i=pl.i, ω=pl.ω, Ω=pl.Ω, tp=pl.tp, M=nt.M, plx=nt.plx)
+        sol = orbitsolve(orb, epoch)
+        e, m, E = pl.e, meananom(sol), eccanom(sol)
+        jac = abs(3m*(e+cos(E)) + 2*(-2+e^2+e*cos(E))*sin(E)) * cbrt(period(orb)/365.25) / sqrt(1-e^2)
+        @test term ≈ log(jac) rtol=1e-6
+    end
+end

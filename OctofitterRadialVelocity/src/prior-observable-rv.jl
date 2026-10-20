@@ -55,7 +55,10 @@ function Octofitter.ln_like(
     sqrt_eccen = sqrt(1-eccentricity(orbit)^2)
     jac *= cbrt(P) / sqrt_eccen
 
-    ln_prior += 2log(jac)
+    # |J| to the first power, as in Octofitter's prior-observable.jl (fixed
+    # 2026-10 from 2log(jac)).  Note this wrapper still uses the ASTROMETRIC
+    # Jacobian at the RV epochs, not O'Neil et al. 2019 eq. 34.
+    ln_prior += log(jac)
 
     return ln_like_wrapped + ln_prior
 end
