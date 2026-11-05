@@ -13,6 +13,24 @@ Represents angular acceleration observations of a body orbiting a central mass.
 All units are in **milliarcseconds per year squared** (mas/yr²).
 
 An optional `:cor` column specifies the correlation between accra and accdec errors.
+
+Three optional **system-level** calibration parameters are read from `θ_system`
+when they are declared in the `System` `@variables` block; each defaults to zero
+and is shared by every body in the system (the acceleration measurements of all
+bodies come from the same astrometric reduction):
+
+- `acc_bias_ra`, `acc_bias_dec` [mas/yr²]: a common zero point of the measured
+  accelerations, subtracted from `accra`/`accdec` before the residual is formed
+  (`resid = accra_data - acc_bias_ra - accra_model`). With Gaussian priors on
+  both, the fit marginalizes over a calibration offset that would otherwise be
+  absorbed by the central mass and the line-of-sight distances.
+- `acc_jitter` [mas/yr²]: extra scatter added in quadrature to `σ_accra` and
+  `σ_accdec` of every body.
+
+An observation-level `jitter` (declared in this observation's own `@variables`
+block) is also supported and is combined in quadrature with `acc_jitter`.
+Note that the zero point applies to this vector likelihood only;
+`PlanetAccelMagObs` carries no direction and ignores `acc_bias_*`.
 """
 struct PlanetAccelObs{TTable<:Table,TDistTuple} <: AbstractObs
     table::TTable
@@ -119,6 +137,12 @@ function ln_like(acc_obs::PlanetAccelObs, ctx::PlanetObservationContext)
     T = Octofitter._system_number_type(θ_system)
 
     jitter = hasproperty(θ_obs, :jitter) ? getproperty(θ_obs, :jitter) : zero(T)
+    # System-level calibration terms shared by all bodies (see the docstring);
+    # zero unless declared, so models without them are unchanged.  Read from
+    # θ_system like offsetx/offsety in relative-astrometry.jl.
+    acc_bias_ra  = hasproperty(θ_system, :acc_bias_ra)  ? getproperty(θ_system, :acc_bias_ra)  : zero(T)
+    acc_bias_dec = hasproperty(θ_system, :acc_bias_dec) ? getproperty(θ_system, :acc_bias_dec) : zero(T)
+    acc_jitter   = hasproperty(θ_system, :acc_jitter)   ? getproperty(θ_system, :acc_jitter)   : zero(T)
 
     L = length(acc_obs.table.epoch)
     ll = zero(T)
@@ -133,14 +157,16 @@ function ln_like(acc_obs::PlanetAccelObs, ctx::PlanetObservationContext)
             accra_model = accra_model_buf[i_epoch]
             accdec_model = accdec_model_buf[i_epoch]
 
-            resid1 = acc_obs.table.accra[i_epoch] - accra_model
-            resid2 = acc_obs.table.accdec[i_epoch] - accdec_model
+            resid1 = acc_obs.table.accra[i_epoch] - acc_bias_ra - accra_model
+            resid2 = acc_obs.table.accdec[i_epoch] - acc_bias_dec - accdec_model
 
-            if jitter == 0.
+            if jitter == 0. && acc_jitter == 0.
                 ll += logpdf(acc_obs.precomputed_pointwise_distributions[i_epoch], @SVector[resid1, resid2])
             else
-                σ₁ = hypot(acc_obs.table.σ_accra[i_epoch], jitter)
-                σ₂ = hypot(acc_obs.table.σ_accdec[i_epoch], jitter)
+                # Squares rather than hypot: the derivative of hypot(σ, j) is
+                # undefined at j = 0, which a jitter prior may touch.
+                σ₁ = sqrt(acc_obs.table.σ_accra[i_epoch]^2 + jitter^2 + acc_jitter^2)
+                σ₂ = sqrt(acc_obs.table.σ_accdec[i_epoch]^2 + jitter^2 + acc_jitter^2)
                 if hasproperty(acc_obs.table, :cor)
                     cor = acc_obs.table.cor[i_epoch]
                     Σ = @SArray[
@@ -171,16 +197,21 @@ function generate_from_params(like::PlanetAccelObs, ctx::PlanetObservationContex
     accdec_model = collect(sim.accdec_model)
 
     jitter = hasproperty(θ_obs, :jitter) ? getproperty(θ_obs, :jitter) : 0.0
+    # System-level calibration terms, as in ln_like: a generated data set
+    # carries the same zero point and extra scatter the model was fitted with.
+    acc_bias_ra  = hasproperty(θ_system, :acc_bias_ra)  ? θ_system.acc_bias_ra  : 0.0
+    acc_bias_dec = hasproperty(θ_system, :acc_bias_dec) ? θ_system.acc_bias_dec : 0.0
+    acc_jitter   = hasproperty(θ_system, :acc_jitter)   ? θ_system.acc_jitter   : 0.0
 
     σ_accra = like.table.σ_accra
     σ_accdec = like.table.σ_accdec
 
-    accra_out = accra_model
-    accdec_out = accdec_model
+    accra_out = accra_model .+ acc_bias_ra
+    accdec_out = accdec_model .+ acc_bias_dec
 
     if add_noise
-        accra_out .+= randn.() .* hypot.(σ_accra, jitter)
-        accdec_out .+= randn.() .* hypot.(σ_accdec, jitter)
+        accra_out .+= randn.() .* sqrt.(σ_accra.^2 .+ jitter^2 .+ acc_jitter^2)
+        accdec_out .+= randn.() .* sqrt.(σ_accdec.^2 .+ jitter^2 .+ acc_jitter^2)
     end
 
     if hasproperty(like.table, :cor)

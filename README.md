@@ -22,7 +22,7 @@ In addition to these documentation and tutorial pages, you can read the paper pu
 
 ## Fork modifications
 
-This fork adds four features to upstream Octofitter, all backwards compatible:
+This fork adds five features to upstream Octofitter, all backwards compatible:
 if the corresponding variables are not declared, the code reduces to stock
 Octofitter behaviour.
 
@@ -32,10 +32,21 @@ Octofitter behaviour.
 | `PlanetPMObs` | `src/likelihoods/proper-motion.jl` | Direct 2D proper-motion likelihood |
 | `PlanetAccelObs` | `src/likelihoods/acceleration.jl` | Direct 2D acceleration likelihood |
 | `PlanetZPriorObs` | `src/likelihoods/z-prior.jl` | Prior on the line-of-sight offset from the central mass |
+| Acceleration calibration terms | `src/likelihoods/acceleration.jl`, `acceleration-magnitude.jl` | System-level `acc_bias_ra`/`acc_bias_dec` (a common zero point subtracted from every body's measured acceleration, mas/yr²) and `acc_jitter` (a common extra scatter added in quadrature to the acceleration errors) |
 
 `offsetx`/`offsety` are read from `θ_system` rather than `θ_obs`, because the
 central mass position is physically shared by all orbiting objects and must not
 vary per observation. Declare them in the `System`-level `@variables` block.
+
+The acceleration calibration terms follow the same pattern. Declaring
+`acc_bias_ra ~ Normal(0, 0.02)` and `acc_bias_dec ~ Normal(0, 0.02)` in the
+`System` block marginalizes over a zero point common to all bodies, which a
+Keplerian model cannot otherwise represent (its acceleration vectors all
+point at the central mass and fall off as 1/r²), so that an undetected
+calibration offset is not absorbed by the central mass or the line-of-sight
+distances. The zero point acts on the vector likelihood `PlanetAccelObs`
+only; `PlanetAccelMagObs` has no direction and ignores it, while `acc_jitter`
+applies to both.
 
 ### Caveat: the position offsets apply only to RA/Dec astrometry
 

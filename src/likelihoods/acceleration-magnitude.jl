@@ -27,6 +27,10 @@ propagated from the vector components via
     σ_|a| = √( (aα* σ_aα*)² + (aδ σ_aδ)² ) / |a|.
 `octo_utils.build_star_observations` does this automatically when
 `acceleration_type = "magnitude"`.
+
+The system-level `acc_jitter` of `PlanetAccelObs` (extra scatter common to all
+bodies, read from `θ_system`) is honored here as well; the zero point
+`acc_bias_ra`/`acc_bias_dec` is not, since a magnitude carries no direction.
 """
 struct PlanetAccelMagObs{TTable<:Table,TDistTuple} <: AbstractObs
     table::TTable
@@ -110,6 +114,9 @@ function ln_like(acc_mag_obs::PlanetAccelMagObs, ctx::PlanetObservationContext)
     T = Octofitter._system_number_type(θ_system)
 
     jitter = hasproperty(θ_obs, :jitter) ? getproperty(θ_obs, :jitter) : zero(T)
+    # System-level extra scatter shared by all bodies (see PlanetAccelObs).  The
+    # zero point acc_bias_ra/acc_bias_dec is not applicable to a magnitude.
+    acc_jitter = hasproperty(θ_system, :acc_jitter) ? getproperty(θ_system, :acc_jitter) : zero(T)
 
     L  = length(acc_mag_obs.table.epoch)
     ll = zero(T)
@@ -124,10 +131,10 @@ function ln_like(acc_mag_obs::PlanetAccelMagObs, ctx::PlanetObservationContext)
             accmag_model = accmag_model_buf[i_epoch]
             resid = acc_mag_obs.table.accmag[i_epoch] - accmag_model
 
-            if jitter == 0.
+            if jitter == 0. && acc_jitter == 0.
                 ll += logpdf(acc_mag_obs.precomputed_pointwise_distributions[i_epoch], resid)
             else
-                σ = hypot(acc_mag_obs.table.σ_accmag[i_epoch], jitter)
+                σ = sqrt(acc_mag_obs.table.σ_accmag[i_epoch]^2 + jitter^2 + acc_jitter^2)
                 ll += logpdf(Normal(zero(T), σ), resid)
             end
         end
@@ -149,9 +156,10 @@ function generate_from_params(like::PlanetAccelMagObs, ctx::PlanetObservationCon
     accmag_out = collect(sim.accmag_model)
 
     jitter = hasproperty(θ_obs, :jitter) ? getproperty(θ_obs, :jitter) : 0.0
+    acc_jitter = hasproperty(θ_system, :acc_jitter) ? θ_system.acc_jitter : 0.0
 
     if add_noise
-        accmag_out .+= randn.() .* hypot.(σ_accmag, jitter)
+        accmag_out .+= randn.() .* sqrt.(σ_accmag.^2 .+ jitter^2 .+ acc_jitter^2)
     end
 
     return PlanetAccelMagObs(Table(; epoch, accmag = accmag_out, σ_accmag); like.name)
