@@ -66,6 +66,7 @@ function Pigeons.default_explorer(::Octofitter.LogDensityModel)
     return Pigeons.SliceSampler()
 end
 
+include("mixture_reference.jl")
 
 
 Base.@nospecializeinfer function Octofitter.octofit_pigeons(

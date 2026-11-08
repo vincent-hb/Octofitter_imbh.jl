@@ -44,6 +44,10 @@ if TEST_MODE in ("all", "unit")
         @testset "NSS Catalog" begin
             include("unit/nss.jl")
         end
+
+        @testset "Mixture reference" begin
+            include("unit/mixture_reference.jl")
+        end
     end
 end
 

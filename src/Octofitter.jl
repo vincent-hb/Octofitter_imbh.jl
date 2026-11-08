@@ -80,6 +80,7 @@ include("likelihoods/escape-velocity.jl")
 include("logdensitymodel.jl")
 include("initialization.jl")
 include("sampling.jl")
+include("mixture_reference.jl")
 
 include("analysis.jl")
 include("sonora.jl")
