@@ -1,4 +1,13 @@
 
+# WARNING — limitations of this RV wrapper (no functional change, documentation only):
+# 1. It evaluates the ASTROMETRIC Jacobian (O'Neil et al. 2019 eq. 33) at the RV
+#    epochs, not the RV Jacobian of eq. 34.
+# 2. Do not wrap both the position and the RV observations of the same companion:
+#    the two wrappers ADD two log-priors (multiply the priors), whereas eq. 36b SUMS
+#    the Jacobians inside one prior. When the RV and astrometric epochs coincide this
+#    gives ≈ |J|², the exponent error fixed in 2026-10.
+# When the astrometry is far more precise relative to the orbit than the RVs, the RV
+# term of eq. 36b is negligible and the position wrapper alone is the right choice.
 function Octofitter.ln_like(
     like::Union{Octofitter.ObsPriorAstromONeil2019{StarAbsoluteRVObs}, Octofitter.ObsPriorAstromONeil2019{MarginalizedStarAbsoluteRVObs}},
     context::Octofitter.PlanetObservationContext

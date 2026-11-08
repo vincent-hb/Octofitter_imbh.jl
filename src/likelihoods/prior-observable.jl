@@ -131,6 +131,17 @@ function ln_like(
     sqrt_eccen = sqrt(1-eccentricity(orbit)^2)
     jac *= cbrt(P) / sqrt_eccen
 
+    # Conventions (O'Neil et al. 2019 eqs. 33 and 36a):
+    # * The Jacobian is evaluated at fixed T₀ with `meananom(sol)` wrapped to [−π, π]
+    #   (nearest-periastron branch).
+    # * The (GM)^(2/3) prefactor of eq. 33 is omitted, i.e. the prior on (P, e) is
+    #   normalised at each central mass M; the declared prior on M is then the
+    #   effective one.
+    # * Eq. 33 is a Jacobian at fixed T₀, i.e. it assumes a reference measure uniform in
+    #   T₀ (eq. 30). If the companion is parameterised by θ (sky position angle at an
+    #   epoch) with a uniform prior, add `PlanetThetaPhasePriorObs` at that epoch so the
+    #   phase prior is uniform in time; see prior-theta-phase.jl.
+
     # O'Neil et al. 2019 eq. 36a: the prior is |J| to the FIRST power, so its
     # log is log(jac).  This was 2log(jac) (|J|^2) until 2026-10: the term was
     # ported from Efit5, which works in chi^2 units (-2 ln prior) and so writes
